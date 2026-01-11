@@ -1,19 +1,14 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'firebase_options.dart'; 
+import 'package:hive_flutter/hive_flutter.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Hive.initFlutter();
+  await Hive.openBox('tasks');
   runApp(const NoireApp());
 }
 
-// --- NOIRE COLOR PALETTE ---
 class NoireColors {
   static const Color voidBlack = Color(0xFF050505); 
   static const Color surface = Color(0xFF121212);   
@@ -51,14 +46,166 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  final CollectionReference _tasksRef = FirebaseFirestore.instance.collection('tasks');
+  final _tasksBox = Hive.box('tasks');
+  DateTime _selectedDate = DateTime.now();
+
+  String _formatDateId(DateTime date) {
+    return "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
+  }
+
+  bool isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  String _getDayName(int weekday) {
+    const days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+    return days[weekday - 1];
+  }
+
+  void _showAddTaskSheet() {
+    final titleController = TextEditingController();
+    final descController = TextEditingController();
+    TimeOfDay selectedTimeOfDay = TimeOfDay.now();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            return BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+              child: Container(
+                padding: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+                    top: 20, left: 24, right: 24),
+                decoration: BoxDecoration(
+                  color: NoireColors.voidBlack.withOpacity(0.9),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+                  border: Border(top: BorderSide(color: NoireColors.gold.withOpacity(0.3), width: 1)),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade800, borderRadius: BorderRadius.circular(2)))),
+                    const SizedBox(height: 20),
+                    Text("NEW PROTOCOL", style: GoogleFonts.cinzel(color: NoireColors.gold, fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 20),
+                    TextField(
+                      controller: titleController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: "Task Title",
+                        hintStyle: const TextStyle(color: NoireColors.textDim),
+                        filled: true,
+                        fillColor: Colors.white.withOpacity(0.05),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: descController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: "Description",
+                        hintStyle: const TextStyle(color: NoireColors.textDim),
+                        filled: true,
+                        fillColor: Colors.white.withOpacity(0.05),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    GestureDetector(
+                      onTap: () async {
+                        final TimeOfDay? picked = await showTimePicker(
+                          context: context,
+                          initialTime: selectedTimeOfDay,
+                          builder: (context, child) {
+                            return Theme(
+                              data: ThemeData.dark().copyWith(
+                                colorScheme: const ColorScheme.dark(
+                                  primary: NoireColors.gold,
+                                  onPrimary: Colors.black,
+                                  surface: NoireColors.surface,
+                                  onSurface: NoireColors.textMain,
+                                ),
+                              ),
+                              child: child!,
+                            );
+                          },
+                        );
+                        if (picked != null && picked != selectedTimeOfDay) {
+                          setModalState(() {
+                            selectedTimeOfDay = picked;
+                          });
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white.withOpacity(0.1)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.access_time, color: NoireColors.gold),
+                            const SizedBox(width: 10),
+                            Text(
+                              "${selectedTimeOfDay.hour.toString().padLeft(2, '0')}:${selectedTimeOfDay.minute.toString().padLeft(2, '0')}",
+                              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                            ),
+                            const Spacer(),
+                            const Text("Tap to change", style: TextStyle(color: NoireColors.textDim, fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: NoireColors.gold,
+                          foregroundColor: Colors.black,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: () {
+                          if (titleController.text.isNotEmpty) {
+                            String formattedTime = "${selectedTimeOfDay.hour.toString().padLeft(2, '0')}:${selectedTimeOfDay.minute.toString().padLeft(2, '0')}";
+                            
+                            _tasksBox.add({
+                              'title': titleController.text,
+                              'desc': descController.text.isEmpty ? 'No Description' : descController.text,
+                              'time': formattedTime,
+                              'active': false,
+                              'icon': 'shield',
+                              'date': _formatDateId(_selectedDate),
+                            });
+                            Navigator.pop(context);
+                          }
+                        },
+                        child: const Text("INITIATE PROTOCOL", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Stack(
         children: [
-          // 1. AMBIENT GLOW
           Positioned(
             top: -100,
             left: -100,
@@ -75,8 +222,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
           ),
-
-          // 2. MAIN CONTENT
           SafeArea(
             child: Column(
               children: [
@@ -88,8 +233,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
           ),
-
-          // 3. BOTTOM DOCK
           Positioned(
             bottom: 30,
             left: 0,
@@ -101,46 +244,148 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // --- NEW: LIVE DATA LISTENER ---
+  Widget _buildHeader() {
+    final months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    String formattedDate = "${months[_selectedDate.month - 1]} ${_selectedDate.day}, ${_selectedDate.year}";
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(formattedDate, style: const TextStyle(color: NoireColors.textDim, fontSize: 12, letterSpacing: 2, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 5),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                isSameDay(_selectedDate, DateTime.now()) ? "TODAY" : _getDayName(_selectedDate.weekday),
+                style: GoogleFonts.cinzel(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: 1.5),
+              ),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: NoireColors.gold.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: NoireColors.gold.withOpacity(0.3)),
+                ),
+                child: const Icon(Icons.storage, color: NoireColors.gold, size: 20),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(border: Border(left: BorderSide(color: NoireColors.gold, width: 2))),
+            child: const Text("// SYSTEM: LOCAL STORAGE", style: TextStyle(color: NoireColors.mutedGold, fontSize: 10, letterSpacing: 1)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDateStrip() {
+    return SizedBox(
+      height: 85,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        scrollDirection: Axis.horizontal,
+        itemCount: 14,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (context, index) {
+          final date = DateTime.now().add(Duration(days: index));
+          bool isSelected = isSameDay(date, _selectedDate);
+
+          return GestureDetector(
+            onTap: () {
+              setState(() {
+                _selectedDate = date;
+              });
+            },
+            child: _DateCard(
+              day: _getDayName(date.weekday),
+              date: date.day.toString(),
+              isSelected: isSelected,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildLiveTimelineList() {
-    return StreamBuilder<QuerySnapshot>(
-      // We listen to the 'tasks' collection sorted by time
-      stream: _tasksRef.orderBy('time').snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) return const Center(child: Text("Hata oluştu"));
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: NoireColors.gold));
-        }
+    String targetDate = _formatDateId(_selectedDate);
 
-        final data = snapshot.requireData;
+    return ValueListenableBuilder(
+      valueListenable: _tasksBox.listenable(),
+      builder: (context, Box box, _) {
+        final allTasks = box.toMap(); 
+        
+        final dailyEntries = allTasks.entries.where((entry) {
+          final task = Map<String, dynamic>.from(entry.value);
+          return task['date'] == targetDate;
+        }).toList();
 
-        // If the database is empty, we show "No Operations"
-        if (data.size == 0) {
+        dailyEntries.sort((a, b) {
+          final taskA = Map<String, dynamic>.from(a.value);
+          final taskB = Map<String, dynamic>.from(b.value);
+          return (taskA['time'] as String).compareTo(taskB['time'] as String);
+        });
+
+        if (dailyEntries.isEmpty) {
           return Center(
-            child: Text(
-              "NO OPERATIONS SCHEDULED",
-              style: GoogleFonts.cinzel(color: NoireColors.textDim, letterSpacing: 1),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.save_as_outlined, color: NoireColors.gold.withOpacity(0.3), size: 40),
+                const SizedBox(height: 10),
+                Text("LOCAL DATA EMPTY", style: GoogleFonts.cinzel(color: NoireColors.textDim, letterSpacing: 1)),
+              ],
             ),
           );
         }
 
         return ListView.builder(
           padding: const EdgeInsets.only(bottom: 120),
-          itemCount: data.size,
+          itemCount: dailyEntries.length,
           itemBuilder: (context, index) {
-            final doc = data.docs[index];
-            final task = doc.data() as Map<String, dynamic>;
-            
-            // Icon name string to IconData
+            final entry = dailyEntries[index];
+            final key = entry.key;
+            final task = Map<String, dynamic>.from(entry.value);
             IconData iconToUse = _getIconData(task['icon']);
 
-            return _TimelineItem(
-              docId: doc.id, // Güncelleme için ID lazım
-              time: task['time'] ?? '--:--',
-              title: task['title'] ?? '',
-              desc: task['desc'] ?? '',
-              icon: iconToUse,
-              isActive: task['active'] ?? false,
+            return Dismissible(
+              key: Key(key.toString()),
+              direction: DismissDirection.endToStart,
+              background: Container(
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.only(right: 20),
+                margin: const EdgeInsets.only(bottom: 16),
+                color: Colors.red.shade900.withOpacity(0.5),
+                child: const Icon(Icons.delete_forever, color: Colors.white, size: 32),
+              ),
+              onDismissed: (direction) {
+                _tasksBox.delete(key);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text("${task['title']} deleted from disk.", style: GoogleFonts.montserrat(color: Colors.black)),
+                    backgroundColor: NoireColors.gold,
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              },
+              child: _TimelineItem(
+                keyId: key,
+                time: task['time'] ?? '--:--',
+                title: task['title'] ?? '',
+                desc: task['desc'] ?? '',
+                icon: iconToUse,
+                isActive: task['active'] ?? false,
+                onToggle: () {
+                   task['active'] = !task['active'];
+                   _tasksBox.put(key, task);
+                },
+              ),
             );
           },
         );
@@ -158,58 +403,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // --- HEADER, DATESTRIP AND DOCK ---
-  Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text("JANUARY 11, 2026", style: TextStyle(color: NoireColors.textDim, fontSize: 12, letterSpacing: 2, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 5),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text("TODAY", style: GoogleFonts.cinzel(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: 1.5)),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: NoireColors.gold.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: NoireColors.gold.withOpacity(0.3)),
-                ),
-                child: const Icon(Icons.calendar_today, color: NoireColors.gold, size: 20),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(border: Border(left: BorderSide(color: NoireColors.gold, width: 2))),
-            child: Text("// EXECUTION MODE: LIVE", style: TextStyle(color: NoireColors.mutedGold, fontSize: 10, letterSpacing: 1)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDateStrip() {
-    final days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
-    return SizedBox(
-      height: 85,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        scrollDirection: Axis.horizontal,
-        itemCount: 7,
-        separatorBuilder: (_, __) => const SizedBox(width: 12),
-        itemBuilder: (context, index) {
-          bool isSelected = index == 6; 
-          return _DateCard(day: days[index], date: "${5 + index}", isSelected: isSelected);
-        },
-      ),
-    );
-  }
-
   Widget _buildBottomDock() {
     return Container(
       height: 70, width: 280,
@@ -225,14 +418,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           IconButton(icon: const Icon(Icons.home_filled, color: NoireColors.gold), onPressed: () {}),
           GestureDetector(
             onTap: () {
-              // NEW MISSION TEST
-              _tasksRef.add({
-                'title': 'New Protocol',
-                'desc': 'Added via Backend',
-                'time': '18:00',
-                'active': false,
-                'icon': 'shield'
-              });
+              _showAddTaskSheet();
             },
             child: Container(
               width: 50, height: 50,
@@ -250,12 +436,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-// --- WIDGET COMPONENTS ---
-
 class _DateCard extends StatelessWidget {
   final String day; final String date; final bool isSelected;
   const _DateCard({required this.day, required this.date, required this.isSelected});
-
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
@@ -280,10 +463,11 @@ class _DateCard extends StatelessWidget {
 }
 
 class _TimelineItem extends StatelessWidget {
-  final String docId;
+  final dynamic keyId;
   final String time; final String title; final String desc; final IconData icon; final bool isActive;
+  final VoidCallback onToggle;
 
-  const _TimelineItem({required this.docId, required this.time, required this.title, required this.desc, required this.icon, required this.isActive});
+  const _TimelineItem({required this.keyId, required this.time, required this.title, required this.desc, required this.icon, required this.isActive, required this.onToggle});
 
   @override
   Widget build(BuildContext context) {
@@ -324,9 +508,7 @@ class _TimelineItem extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.only(bottom: 16.0, right: 24, left: 8),
               child: GestureDetector(
-                onTap: () {
-                  FirebaseFirestore.instance.collection('tasks').doc(docId).update({'active': !isActive});
-                },
+                onTap: onToggle,
                 child: Container(
                   height: 100,
                   decoration: BoxDecoration(
